@@ -66,7 +66,7 @@ def generate_full_grid():
     fill()
     return grid
 
-def make_puzzle(full_grid, clues=30):
+def make_puzzle(full_grid, clues=2):
     puzzle = copy.deepcopy(full_grid)
     cells = [(r, c) for r in range(9) for c in range(9)]
     random.shuffle(cells)
@@ -81,7 +81,7 @@ def make_puzzle(full_grid, clues=30):
         puzzle[r][c] = 0
 
         grid_copy = copy.deepcopy(puzzle)
-        if solve_backtrack(grid_copy, limit_solutions=2) != 1:
+        if solve_backtrack(grid_copy, limit_solutions=20) != 1:
             puzzle[r][c] = backup  # restore if not unique
         else:
             removed += 1
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     random.seed()
 
     full = generate_full_grid()
-    puzzle = make_puzzle(full, clues=15)
+    puzzle = make_puzzle(full, clues=5)
 
     save_to_txt(puzzle)  # creates sudoku.txt
     print("Sudoku puzzle saved to sudoku.txt")

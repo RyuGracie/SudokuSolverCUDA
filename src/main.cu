@@ -22,11 +22,25 @@ constexpr int MAX_BOARDS = (INT_MAX >> 8);
 
 typedef uint16_t u16;
 
+#define CUDA_CHECK(call)                                                                                 \
+    do                                                                                                   \
+    {                                                                                                    \
+        cudaError_t err = (call);                                                                        \
+        if (err != cudaSuccess)                                                                          \
+        {                                                                                                \
+            fprintf(stderr, "CUDA Error: %s (at %s:%d)\n", cudaGetErrorString(err), __FILE__, __LINE__); \
+            exit(1);                                                                                     \
+        }                                                                                                \
+    } while (0)
+
 __device__ int d_solution_found = 0;
 
 __host__ __device__ inline int idx(int r, int c) { return r * N + c; }
 
-struct Board { u16 cell[BOARD_SIZE]; };
+struct Board
+{
+    u16 cell[BOARD_SIZE];
+};
 
 __device__ bool CheckNeighbors(const Board &b, int id)
 {
@@ -39,18 +53,21 @@ __device__ bool CheckNeighbors(const Board &b, int id)
         if (i * N + idc != id)
         {
             u16 colMask = b.cell[i * N + idc];
-            if (colMask == ALL_CANDIDATES) colMask = 0;
+            if (colMask == ALL_CANDIDATES)
+                colMask = 0;
             cands &= ~colMask;
         }
 
         if (idr * N + i != id)
         {
             u16 rowMask = b.cell[idr * N + i];
-            if (rowMask == ALL_CANDIDATES) rowMask = 0;
+            if (rowMask == ALL_CANDIDATES)
+                rowMask = 0;
             cands &= ~rowMask;
         }
 
-        if (!cands) return false;
+        if (!cands)
+            return false;
     }
 
     int boxRId = idr / BOX_N;
@@ -63,11 +80,14 @@ __device__ bool CheckNeighbors(const Board &b, int id)
         {
             int rr = rowStart + r;
             int cc = colStart + c;
-            if (rr * N + cc == id) continue;
+            if (rr * N + cc == id)
+                continue;
             u16 boxMask = b.cell[rr * N + cc];
-            if (boxMask == ALL_CANDIDATES) boxMask = 0;
+            if (boxMask == ALL_CANDIDATES)
+                boxMask = 0;
             cands &= ~boxMask;
-            if (!cands) return false;
+            if (!cands)
+                return false;
         }
 
     return true;
@@ -83,8 +103,10 @@ __device__ u16 ComputeCandidates(const Board &d_board, int id)
     {
         u16 colMask = d_board.cell[i * N + idc];
         u16 rowMask = d_board.cell[idr * N + i];
-        if (colMask == ALL_CANDIDATES) colMask = 0;
-        if (rowMask == ALL_CANDIDATES) rowMask = 0;
+        if (colMask == ALL_CANDIDATES)
+            colMask = 0;
+        if (rowMask == ALL_CANDIDATES)
+            rowMask = 0;
         cands &= ~colMask;
         cands &= ~rowMask;
     }
@@ -100,7 +122,8 @@ __device__ u16 ComputeCandidates(const Board &d_board, int id)
             int rr = rowStart + r;
             int cc = colStart + c;
             u16 mask = d_board.cell[rr * N + cc];
-            if (mask == ALL_CANDIDATES) mask = 0;
+            if (mask == ALL_CANDIDATES)
+                mask = 0;
             cands &= ~mask;
         }
 
@@ -110,8 +133,10 @@ __device__ u16 ComputeCandidates(const Board &d_board, int id)
 __global__ void DfsSolveKernel(const Board *frontier, int frontier_size, Board *solution_out)
 {
     int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    if (tid >= frontier_size) return;
-    if (atomicAdd(&d_solution_found, 0) != 0) return;
+    if (tid >= frontier_size)
+        return;
+    if (atomicAdd(&d_solution_found, 0) != 0)
+        return;
 
     Board b = frontier[tid];
     int prev[BOARD_SIZE];
@@ -132,23 +157,30 @@ __global__ void DfsSolveKernel(const Board *frontier, int frontier_size, Board *
             u16 cand = ComputeCandidates(b, i);
             mask[i] = cand;
             copyMask[i] = cand;
-            if (!cand) return;
+            if (!cand)
+                return;
         }
     }
 
     int cur = -1;
     for (int i = 0; i < BOARD_SIZE; ++i)
-        if (b.cell[i] == ALL_CANDIDATES) { cur = i; break; }
+        if (b.cell[i] == ALL_CANDIDATES)
+        {
+            cur = i;
+            break;
+        }
 
     if (cur == -1)
     {
-        if (atomicCAS(&d_solution_found, 0, 1) == 0) *solution_out = b;
+        if (atomicCAS(&d_solution_found, 0, 1) == 0)
+            *solution_out = b;
         return;
     }
 
     while (cur != -1)
     {
-        if (atomicAdd(&d_solution_found, 0) != 0) return;
+        if (atomicAdd(&d_solution_found, 0) != 0)
+            return;
 
         if (!mask[cur])
         {
@@ -180,11 +212,16 @@ __global__ void DfsSolveKernel(const Board *frontier, int frontier_size, Board *
 
         int nextCell = -1;
         for (int i = 0; i < BOARD_SIZE; ++i)
-            if (b.cell[i] == ALL_CANDIDATES) { nextCell = i; break; }
+            if (b.cell[i] == ALL_CANDIDATES)
+            {
+                nextCell = i;
+                break;
+            }
 
         if (nextCell == -1)
         {
-            if (atomicCAS(&d_solution_found, 0, 1) == 0) *solution_out = b;
+            if (atomicCAS(&d_solution_found, 0, 1) == 0)
+                *solution_out = b;
             return;
         }
 
@@ -196,7 +233,11 @@ __global__ void DfsSolveKernel(const Board *frontier, int frontier_size, Board *
             u16 cand = ComputeCandidates(b, cur);
             mask[cur] = cand;
             copyMask[cur] = cand;
-            if (!cand) { cur = prev[cur]; continue; }
+            if (!cand)
+            {
+                cur = prev[cur];
+                continue;
+            }
         }
     }
 }
@@ -205,16 +246,21 @@ __global__ void ExpandFrontierKernel(Board *d_frontier, int startIndex, int endI
 {
     int gtid = blockIdx.x * blockDim.x + threadIdx.x;
     int range = endIndex - startIndex;
-    if (gtid >= range) return;
+    if (gtid >= range)
+        return;
+    if (gtid >= maxBoards)
+        return;
 
     Board board = d_frontier[startIndex + gtid];
 
     for (int i = 0; i < BOARD_SIZE; ++i)
     {
-        if (board.cell[i] != ALL_CANDIDATES) continue;
+        if (board.cell[i] != ALL_CANDIDATES)
+            continue;
 
         u16 cands = ComputeCandidates(board, i);
-        if (!cands) return;
+        if (!cands)
+            return;
 
         u16 mask = cands;
         while (mask)
@@ -224,7 +270,8 @@ __global__ void ExpandFrontierKernel(Board *d_frontier, int startIndex, int endI
             nb.cell[i] = (1u << bitIndex);
 
             int pos = atomicAdd(d_nextBoardIndex, 1);
-            if (pos < maxBoards) d_frontier[pos] = nb;
+            if (pos < maxBoards)
+                d_frontier[pos] = nb;
 
             mask &= (mask - 1);
         }
@@ -260,8 +307,7 @@ bool IsSolvedHost(const Board &B)
 
 int main()
 {
-
-
+    // -------- Read Sudoku Input --------
     u16 *h_input = new u16[BOARD_SIZE];
     memset(h_input, 0, BOARD_SIZE * sizeof(u16));
 
@@ -275,7 +321,8 @@ int main()
     char ch;
     int idx_in = 0;
     while (in >> ch && idx_in < BOARD_SIZE)
-        if (ch >= '0' && ch <= '9') h_input[idx_in++] = ch - '0';
+        if (ch >= '0' && ch <= '9')
+            h_input[idx_in++] = ch - '0';
     in.close();
 
     Board startBoard;
@@ -285,64 +332,112 @@ int main()
         startBoard.cell[i] = (v == 0 ? ALL_CANDIDATES : (1u << (v - 1)));
     }
 
+    delete[] h_input;
+
+    // -------- Allocate GPU Memory --------
 
     Board *d_frontier, *d_solution;
     int *d_nextIndex;
 
-    cudaMalloc(&d_frontier, MAX_BOARDS * sizeof(Board));
-    cudaMalloc(&d_nextIndex, sizeof(int));
-    cudaMalloc(&d_solution, sizeof(Board));
+    CUDA_CHECK(cudaMalloc(&d_frontier, MAX_BOARDS * sizeof(Board)));
+    CUDA_CHECK(cudaMalloc(&d_nextIndex, sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_solution, sizeof(Board)));
 
-    cudaMemset(d_frontier, 0, MAX_BOARDS * sizeof(Board));
+    CUDA_CHECK(cudaMemset(d_frontier, 0, MAX_BOARDS * sizeof(Board)));
 
     int initNext = 1;
-    cudaMemcpy(d_nextIndex, &initNext, sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_frontier, &startBoard, sizeof(Board), cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_nextIndex, &initNext, sizeof(int),
+                          cudaMemcpyHostToDevice));
 
+    CUDA_CHECK(cudaMemcpy(d_frontier, &startBoard, sizeof(Board),
+                          cudaMemcpyHostToDevice));
+
+    // -------- Reset device solution flag --------
+    int zero = 0;
+    CUDA_CHECK(cudaMemcpyToSymbol(d_solution_found, &zero, sizeof(int)));
+
+    // -------- BFS Expansion --------
     int blockSize = 128;
     int startIndex = 0;
     int cutoffIndex = 1;
+
     int range = cutoffIndex - startIndex;
     int gridSize = (range + blockSize - 1) / blockSize;
 
-    ExpandFrontierKernel<<<gridSize, blockSize>>>(d_frontier, startIndex, cutoffIndex, d_nextIndex, MAX_BOARDS);
-    cudaDeviceSynchronize();
+    ExpandFrontierKernel<<<gridSize, blockSize>>>(
+        d_frontier, startIndex, cutoffIndex, d_nextIndex, MAX_BOARDS);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     int depth = BFS_DEPTH;
     for (int d = 0; d < depth; ++d)
     {
         startIndex = cutoffIndex;
-        cudaMemcpy(&cutoffIndex, d_nextIndex, sizeof(int), cudaMemcpyDeviceToHost);
+        CUDA_CHECK(cudaMemcpy(&cutoffIndex, d_nextIndex, sizeof(int),
+                              cudaMemcpyDeviceToHost));
+
         range = cutoffIndex - startIndex;
-        if (range <= 0) break;
+        if (range <= 0)
+            break;
+        if(range/2 + startIndex > MAX_BOARDS)
+            break;
         gridSize = (range + blockSize - 1) / blockSize;
-        ExpandFrontierKernel<<<gridSize, blockSize>>>(d_frontier, startIndex, cutoffIndex, d_nextIndex, MAX_BOARDS);
+
+        ExpandFrontierKernel<<<gridSize, blockSize>>>(
+            d_frontier, startIndex, cutoffIndex, d_nextIndex,
+            MAX_BOARDS);
+        CUDA_CHECK(cudaDeviceSynchronize());
     }
 
-    startIndex = cutoffIndex;
-    cudaMemcpy(&cutoffIndex, d_nextIndex, sizeof(int), cudaMemcpyDeviceToHost);
-    range = cutoffIndex - startIndex;
-    gridSize = (range + blockSize - 1) / blockSize;
+    // -------- DFS Solve on remaining frontier --------
 
-    DfsSolveKernel<<<gridSize, blockSize>>>(d_frontier + startIndex, range, d_solution);
-    cudaDeviceSynchronize();
+    if (cutoffIndex >= MAX_BOARDS)
+    {
+        // clamp and keep device-side counter in bounds
+        int clamped = MAX_BOARDS;
+        cutoffIndex = clamped;
+        CUDA_CHECK(cudaMemcpy(d_nextIndex, &clamped, sizeof(int), cudaMemcpyHostToDevice));
+    }
+
+    if(range/2 + startIndex < MAX_BOARDS){
+        startIndex = cutoffIndex;
+        CUDA_CHECK(cudaMemcpy(&cutoffIndex, d_nextIndex, sizeof(int),
+        cudaMemcpyDeviceToHost));
+        
+        range = cutoffIndex - startIndex;
+    }
+
+    gridSize = (range + blockSize - 1) / blockSize;
+    DfsSolveKernel<<<gridSize, blockSize>>>(
+        d_frontier + startIndex, range, d_solution);
+
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    // -------- Copy back results --------
     int h_solution_found = 0;
-    cudaMemcpyFromSymbol(&h_solution_found, d_solution_found, sizeof(int));
+    CUDA_CHECK(cudaMemcpyFromSymbol(&h_solution_found, d_solution_found,
+                                    sizeof(int)));
 
     Board solvedHost;
-    cudaMemcpy(&solvedHost, d_solution, sizeof(Board), cudaMemcpyDeviceToHost);
+    CUDA_CHECK(cudaMemcpy(&solvedHost, d_solution, sizeof(Board),
+                          cudaMemcpyDeviceToHost));
 
+    // -------- Output result --------
     if (h_solution_found && IsSolvedHost(solvedHost))
     {
         std::cout << "Solved!\n";
         PrintBoardMasksHost(solvedHost);
     }
-    else std::cout << "No solution.\n";
+    else
+    {
+        std::cout << "No solution.\n";
+    }
 
-    cudaFree(d_frontier);
-    cudaFree(d_nextIndex);
-    cudaFree(d_solution);
-    delete[] h_input;
+    // -------- Cleanup --------
+    CUDA_CHECK(cudaFree(d_frontier));
+    CUDA_CHECK(cudaFree(d_nextIndex));
+    CUDA_CHECK(cudaFree(d_solution));
 
     return 0;
 }
